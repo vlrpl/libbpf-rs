@@ -128,10 +128,16 @@ impl<'a> RingBuffer<'a> {
     /// Poll from all open ring buffers, calling the registered callback for
     /// each one. Polls continually until we either run out of events to consume
     /// or `timeout` is reached.
-    pub fn poll(&self, timeout: Duration) -> Result<()> {
+    pub fn poll(&self, timeout: Option<Duration>) -> Result<()> {
         assert!(!self.ptr.is_null());
 
-        let ret = unsafe { libbpf_sys::ring_buffer__poll(self.ptr, timeout.as_millis() as i32) };
+        let mut timeout_ms = -1;
+
+        if let Some(x) = timeout {
+            timeout_ms = x.as_millis() as i32;
+        }
+
+        let ret = unsafe { libbpf_sys::ring_buffer__poll(self.ptr, timeout_ms) };
 
         util::parse_ret(ret)
     }
