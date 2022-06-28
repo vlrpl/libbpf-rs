@@ -1,4 +1,5 @@
 use std::convert::TryFrom;
+use std::mem;
 use std::path::Path;
 use std::ptr;
 
@@ -278,6 +279,45 @@ impl Program {
     /// Attach this program to a [perf event](https://linux.die.net/man/2/perf_event_open).
     pub fn attach_perf_event(&mut self, pfd: i32) -> Result<Link> {
         let ptr = unsafe { libbpf_sys::bpf_program__attach_perf_event(self.ptr, pfd) };
+        let err = unsafe { libbpf_sys::libbpf_get_error(ptr as *const _) };
+        if err != 0 {
+            Err(Error::System(err as i32))
+        } else {
+            Ok(Link::new(ptr))
+        }
+    }
+
+    /// Attach this program to a [USDT
+    /// ](https://www.kernel.org/doc/html/latest/trace/uprobetracer.html).
+    pub fn attach_usdt<T: AsRef<Path>, U: AsRef<str>>(
+        &mut self,
+        pid: i32,
+        binary_path: T,
+        usdt_provider: U,
+        usdt_name: U,
+        cookie: u64,
+    ) -> Result<Link> {
+        let opts = libbpf_sys::bpf_usdt_opts {
+            sz: mem::size_of::<libbpf_sys::bpf_usdt_opts>() as libbpf_sys::size_t,
+            usdt_cookie: cookie,
+        };
+        let path = util::path_to_cstring(binary_path.as_ref())?;
+        let path_ptr = path.as_ptr();
+        let provider = util::str_to_cstring(usdt_provider.as_ref())?;
+        let provider_ptr = provider.as_ptr();
+        let name = util::str_to_cstring(usdt_name.as_ref())?;
+        let name_ptr = name.as_ptr();
+
+        let ptr = unsafe {
+            libbpf_sys::bpf_program__attach_usdt(
+                self.ptr,
+                pid,
+                path_ptr,
+                provider_ptr,
+                name_ptr,
+                &opts,
+            )
+        };
         let err = unsafe { libbpf_sys::libbpf_get_error(ptr as *const _) };
         if err != 0 {
             Err(Error::System(err as i32))
